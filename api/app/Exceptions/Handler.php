@@ -23,12 +23,16 @@ class Handler extends ExceptionHandler
      */
     public function register(): void
     {
-        $this->shouldRenderJsonWhen(function ($request, Throwable $e) {
-            return $request->is('api/*') || $request->expectsJson();
-        });
-
         $this->reportable(function (Throwable $e) {
             //
         });
+    }
+
+    /**
+     * Always return JSON responses for API routes.
+     */
+    protected function shouldReturnJson($request, Throwable $e): bool
+    {
+        return $request->is('api/*') || parent::shouldReturnJson($request, $e);
     }
 }
