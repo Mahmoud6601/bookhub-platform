@@ -22,6 +22,9 @@ RUN npm run build
 # ---------- Stage 2: runtime ----------
 FROM node:20.18.1-alpine
 
+# Apply latest Alpine security patches for the pinned base image (openssl, musl, zlib).
+RUN apk update && apk upgrade --no-cache
+
 # wget (busybox) is used by the container healthcheck.
 WORKDIR /app
 
