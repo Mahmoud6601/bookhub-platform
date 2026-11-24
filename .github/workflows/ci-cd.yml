@@ -197,6 +197,7 @@ jobs:
           done
 
           curl -kfsS https://localhost/healthz | grep -q "ok"
+          curl -kfsS https://localhost/ | grep -qi "BookHub"
           curl -kfsS https://localhost/api/books >/dev/null
           code=$(curl -ks -o /dev/null -w '%{http_code}' -X POST https://localhost/api/books)
           if [ "$code" != "401" ]; then

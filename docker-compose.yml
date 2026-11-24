@@ -83,7 +83,7 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/health"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -117,8 +117,8 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      # wget is part of busybox in node:alpine.
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/"]
+      # wget is part of busybox in node:alpine (127.0.0.1 avoids IPv6 ::1 lookup).
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -156,7 +156,7 @@ services:
       - "443:443"
     healthcheck:
       # /healthz is answered in plain HTTP on port 80 (see the template).
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/healthz"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
       interval: 15s
       timeout: 5s
       retries: 5
