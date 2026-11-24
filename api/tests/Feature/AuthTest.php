@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Author;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
 
 class AuthTest extends TestCase
@@ -39,7 +40,9 @@ class AuthTest extends TestCase
             ->postJson('/api/logout')
             ->assertOk();
 
-        $this->assertDatabaseCount('personal_access_tokens', 0);
+        // Register issued a separate token, while logout revoked only the current login token.
+        $this->assertNull(PersonalAccessToken::findToken($token));
+        $this->assertDatabaseCount('personal_access_tokens', 1);
 
         $this->app['auth']->forgetGuards();
         $this->withHeader('Authorization', 'Bearer ' . $token)
