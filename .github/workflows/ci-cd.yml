@@ -181,8 +181,8 @@ jobs:
           IMAGE_TAG=${{ github.sha }}
           EOF
           bash ./scripts/generate-ssl.sh localhost
+          trap 'docker compose -f docker-compose.yml ps -a; docker compose -f docker-compose.yml logs --no-color; docker compose -f docker-compose.yml down -v' EXIT
           docker compose -f docker-compose.yml up -d --no-build
-          trap 'docker compose -f docker-compose.yml logs; docker compose -f docker-compose.yml down -v' EXIT
 
           for i in $(seq 1 40); do
             if curl -kfsS https://localhost/api/health | grep -q '"status":"ok"'; then
