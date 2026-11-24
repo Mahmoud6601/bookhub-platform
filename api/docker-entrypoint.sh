@@ -47,13 +47,15 @@ echo "BookHub: MySQL is ready."
 # Laravel reads real environment variables first, so an APP_KEY passed via
 # compose environment is already in effect. Only generate one into .env
 # when neither the environment nor the .env file provides one.
-if [ ! -f .env ]; then
-  cp .env.example .env
-  echo "BookHub: created .env from .env.example."
-fi
-if [ -z "${APP_KEY:-}" ] && grep -q '^APP_KEY=$' .env; then
-  echo "BookHub: APP_KEY is empty — generating one."
-  php artisan key:generate --force
+if [ -z "${APP_KEY:-}" ]; then
+  if [ ! -f .env ]; then
+    cp .env.example .env
+    echo "BookHub: created .env from .env.example."
+  fi
+  if grep -q '^APP_KEY=$' .env; then
+    echo "BookHub: APP_KEY is empty — generating one."
+    php artisan key:generate --force
+  fi
 fi
 
 # --- 3. Migrations & caches ------------------------------------------------

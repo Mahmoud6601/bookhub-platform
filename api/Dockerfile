@@ -68,7 +68,8 @@ COPY --chown=www-data:www-data docker-entrypoint.sh /usr/local/bin/bookhub-entry
 # Apache runtime dirs must be writable by www-data (the container runs non-root).
 RUN mkdir -p /var/run/apache2 /var/log/apache2 /var/lock/apache2 \
     && chown -R www-data:www-data /var/run/apache2 /var/log/apache2 /var/lock/apache2 \
-    && mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
+    && chown www-data:www-data /var/www \
+    && mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache \
     && chmod +x /usr/local/bin/bookhub-entrypoint.sh
 
