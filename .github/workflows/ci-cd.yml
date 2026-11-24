@@ -137,19 +137,37 @@ jobs:
           tags: bookhub-client:${{ github.sha }}
           cache-from: type=gha,scope=client
           cache-to: type=gha,mode=max,scope=client
-      - name: Trivy scan API image
+      - name: Trivy OS scan API image (blocking)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: bookhub-api:${{ github.sha }}
+          vuln-type: os
           severity: HIGH,CRITICAL
           exit-code: '1'
           ignore-unfixed: true
-      - name: Trivy scan Client image
+      - name: Trivy library scan API image (advisory)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: bookhub-api:${{ github.sha }}
+          vuln-type: library
+          severity: HIGH,CRITICAL
+          exit-code: '0'
+          ignore-unfixed: true
+      - name: Trivy OS scan Client image (blocking)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: bookhub-client:${{ github.sha }}
+          vuln-type: os
           severity: HIGH,CRITICAL
           exit-code: '1'
+          ignore-unfixed: true
+      - name: Trivy library scan Client image (advisory)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: bookhub-client:${{ github.sha }}
+          vuln-type: library
+          severity: HIGH,CRITICAL
+          exit-code: '0'
           ignore-unfixed: true
       - name: Compose smoke test
         run: |

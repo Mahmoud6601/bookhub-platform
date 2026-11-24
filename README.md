@@ -162,7 +162,7 @@ flowchart TD
     TestSQLite --> Build["Docker Build (BuildKit cache)"]
     TestMySQL --> Build
     ClientBuild --> Build
-    Build --> Trivy["Trivy Scan (fail on HIGH / CRITICAL)"]
+    Build --> Trivy["Trivy Scan (fail on OS HIGH/CRITICAL + library advisory)"]
     Trivy --> Smoke["Compose Smoke Test (/api/health, /healthz, 401 check)"]
     Smoke --> PushImg["Push to Docker Hub (main only, SHA + build tag)"]
 ```
@@ -390,4 +390,4 @@ Back up before every production deploy. `backups/` is gitignored.
 - **Admin-protected writes:** Book CRUD (`POST/PUT/DELETE /api/books`), categories/authors, order-status changes, and `/api/admin/stats` require `users.is_admin` (excluded from `$fillable`).
 - **PII protection:** Public book/review endpoints expose only reviewer `id` and `name` via API Resources.
 - **Auth hardening:** Auth routes are rate-limited (`throttle:login`, `throttle:register`) and Sanctum tokens expire after 7 days by default (`SANCTUM_EXPIRATION`).
-- **Container & Supply-Chain Security:** Non-root containers (`www-data`, `node`), pinned image versions, and Trivy scanning in CI (fails on `HIGH`/`CRITICAL`).
+- **Container & Supply-Chain Security:** Non-root containers (`www-data`, `node`), pinned image versions, and Trivy scanning in CI (blocks on OS `HIGH`/`CRITICAL` CVEs and reports library CVEs as advisory).
