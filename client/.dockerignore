@@ -1,0 +1,9 @@
+# client/.dockerignore — never send these into the Docker build context.
+.env
+.env.*
+node_modules/
+.nuxt/
+.output/
+dist/
+.git
+.gitignore

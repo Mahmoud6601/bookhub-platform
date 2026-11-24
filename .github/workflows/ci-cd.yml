@@ -1,0 +1,220 @@
+name: BookHub CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  secret-scan:
+    name: Secret & Artifact Hygiene Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if tracked secrets or vendor/ssl/backups exist
+        run: |
+          set -e
+          for path in .env api/.env nginx/ssl backups api/vendor; do
+            if git ls-files --error-unmatch "$path" >/dev/null 2>&1; then
+              echo "ERROR: Tracked secret/artifact detected: $path"
+              exit 1
+            fi
+          done
+          if git ls-files '*.key' '*.pem' '*.crt' | grep -q .; then
+            echo "ERROR: Tracked private key or certificate detected."
+            exit 1
+          fi
+
+  lint:
+    name: PHP Lint & Composer Validate
+    needs: secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+      - name: Check PHP syntax
+        run: find api -name '*.php' -not -path 'api/vendor/*' -print0 | xargs -0 -n1 php -l
+      - name: Validate composer.json
+        working-directory: api
+        run: composer validate --strict
+
+  api-test-sqlite:
+    name: PHPUnit (SQLite)
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_sqlite, sqlite3, mbstring, bcmath
+      - name: Install Composer dependencies
+        working-directory: api
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Run PHPUnit
+        working-directory: api
+        run: vendor/bin/phpunit
+
+  api-test-mysql:
+    name: PHPUnit (MySQL 8.0)
+    needs: lint
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0.46
+        env:
+          MYSQL_ROOT_PASSWORD: root_ci_password
+          MYSQL_DATABASE: bookapi_test
+          MYSQL_USER: app
+          MYSQL_PASSWORD: app_ci_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -u root -proot_ci_password"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, mbstring, bcmath
+      - name: Install Composer dependencies
+        working-directory: api
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Run PHPUnit against MySQL
+        working-directory: api
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: bookapi_test
+          DB_USERNAME: app
+          DB_PASSWORD: app_ci_password
+        run: vendor/bin/phpunit
+
+  client-build:
+    name: Nuxt 3 Client Build
+    needs: secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.18.1'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - name: Install and build client
+        working-directory: client
+        run: |
+          npm ci
+          npm run build
+
+  build-scan-smoke:
+    name: Docker Build, Trivy Scan & Compose Smoke Test
+    needs: [api-test-sqlite, api-test-mysql, client-build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          load: true
+          tags: bookhub-api:${{ github.sha }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: Build Client image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./client
+          load: true
+          tags: bookhub-client:${{ github.sha }}
+          cache-from: type=gha,scope=client
+          cache-to: type=gha,mode=max,scope=client
+      - name: Trivy scan API image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: bookhub-api:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+      - name: Trivy scan Client image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: bookhub-client:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+      - name: Compose smoke test
+        run: |
+          set -e
+          cat > .env <<EOF
+          DB_PASSWORD=ci_app_secret_password
+          MYSQL_ROOT_PASSWORD=ci_root_secret_password
+          APP_KEY=base64:m7Dh4/xFoaalrPVlUqG++psCV9C6KZbrSGoloOG23r0=
+          APP_URL_HOST=localhost
+          NUXT_PUBLIC_API_BASE=
+          IMAGE_TAG=${{ github.sha }}
+          EOF
+          bash ./scripts/generate-ssl.sh localhost
+          docker compose -f docker-compose.yml up -d --no-build
+          trap 'docker compose -f docker-compose.yml logs; docker compose -f docker-compose.yml down -v' EXIT
+
+          for i in $(seq 1 40); do
+            if curl -kfsS https://localhost/api/health | grep -q '"status":"ok"'; then
+              echo "API healthy via Nginx"
+              break
+            fi
+            if [ "$i" -eq 40 ]; then
+              echo "Timed out waiting for /api/health"
+              exit 1
+            fi
+            sleep 3
+          done
+
+          curl -kfsS https://localhost/healthz | grep -q "ok"
+          curl -kfsS https://localhost/api/books >/dev/null
+          code=$(curl -ks -o /dev/null -w '%{http_code}' -X POST https://localhost/api/books)
+          if [ "$code" != "401" ]; then
+            echo "Expected 401 on unauthenticated POST /api/books, got $code"
+            exit 1
+          fi
+
+  push-images:
+    name: Push Images to Docker Hub
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build-scan-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to Docker Hub
+        if: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push API image
+        if: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/bookhub-api:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/bookhub-api:build-${{ github.run_number }}
+      - name: Build and push Client image
+        if: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./client
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/bookhub-client:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/bookhub-client:build-${{ github.run_number }}

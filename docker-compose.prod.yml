@@ -1,0 +1,21 @@
+# BookHub — production overrides.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# or, to deploy a previously built + pushed image tag:
+#   IMAGE_TAG=<sha> docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# This file pulls pre-built images from the registry instead of building
+# locally, forces production mode, and pins the image tag via IMAGE_TAG
+# (set by CI to the git SHA — see docs/DEPLOY.md for rollback).
+
+services:
+  api:
+    image: ${DOCKER_USERNAME:?DOCKER_USERNAME is required in production — set it to your Docker Hub username}/bookhub-api:${IMAGE_TAG:?IMAGE_TAG is required in production — set it to the git SHA or version tag to deploy}
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+
+  client:
+    image: ${DOCKER_USERNAME:?DOCKER_USERNAME is required in production — set it to your Docker Hub username}/bookhub-client:${IMAGE_TAG:?IMAGE_TAG is required in production — set it to the git SHA or version tag to deploy}
+    environment:
+      NODE_ENV: production

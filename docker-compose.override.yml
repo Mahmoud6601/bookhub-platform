@@ -1,0 +1,28 @@
+# BookHub — local development overrides.
+# Loaded automatically by `docker compose up` (Compose always reads
+# docker-compose.override.yml next to docker-compose.yml).
+# Production must NOT use this file: use docker-compose.prod.yml instead.
+# This file re-adds what production deliberately removes: host ports, the
+# API code bind mount (vendor/ must exist on the host — run
+# `composer install` in api/ first), and debug mode.
+
+services:
+  db:
+    ports:
+      - "3306:3306"
+
+  api:
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+    volumes:
+      # Dev only: live code reload. Anonymous volume keeps the image's vendor/
+      # intact if the host hasn't run composer install yet.
+      - ./api:/var/www
+      - /var/www/vendor
+
+  client:
+    ports:
+      - "3000:3000"
